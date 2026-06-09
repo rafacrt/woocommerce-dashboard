@@ -9,9 +9,33 @@ class WCD_Dashboard {
             return;
         }
 
-        add_action( 'wp_dashboard_setup',   [ __CLASS__, 'setup_dashboard' ], 999 );
+        add_action( 'wp_dashboard_setup',    [ __CLASS__, 'setup_dashboard' ], 999 );
         add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
         add_action( 'wp_ajax_wcd_chart_data', [ __CLASS__, 'ajax_chart_data' ] );
+
+        // força layout de 1 coluna para todos os usuários
+        add_filter( 'screen_layout_columns', [ __CLASS__, 'force_one_column' ], 999, 2 );
+        add_action( 'admin_init',            [ __CLASS__, 'set_one_column_option' ] );
+    }
+
+    public static function force_one_column( $columns, $screen_id ) {
+        if ( 'dashboard' === $screen_id ) {
+            $columns['dashboard'] = 1;
+        }
+        return $columns;
+    }
+
+    public static function set_one_column_option() {
+        $user_id = get_current_user_id();
+        if ( get_user_meta( $user_id, 'screen_layout_dashboard', true ) != 1 ) {
+            update_user_meta( $user_id, 'screen_layout_dashboard', 1 );
+        }
+        // garante que nosso widget não esteja na lista de ocultos
+        $hidden = get_user_meta( $user_id, 'metaboxhidden_dashboard', true );
+        if ( is_array( $hidden ) && in_array( 'wcd_main', $hidden ) ) {
+            $hidden = array_diff( $hidden, [ 'wcd_main' ] );
+            update_user_meta( $user_id, 'metaboxhidden_dashboard', $hidden );
+        }
     }
 
     // ─── Remove todos os widgets padrão e adiciona os nossos ─────────────────
@@ -22,7 +46,7 @@ class WCD_Dashboard {
         // remove tudo
         $wp_meta_boxes['dashboard'] = [];
 
-        // adiciona nosso painel principal (largura total — coluna 1)
+        // adiciona nosso painel em contexto 'normal' (coluna única)
         wp_add_dashboard_widget(
             'wcd_main',
             '',
