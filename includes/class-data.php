@@ -137,6 +137,7 @@ class WCD_Data {
             'limit'   => $limit,
             'orderby' => 'date',
             'order'   => 'DESC',
+            'type'    => 'shop_order',
         ] );
 
         $data = [];
