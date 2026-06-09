@@ -9,49 +9,28 @@ class WCD_Dashboard {
             return;
         }
 
-        add_action( 'wp_dashboard_setup',    [ __CLASS__, 'setup_dashboard' ], 999 );
         add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
-        add_action( 'wp_ajax_wcd_chart_data', [ __CLASS__, 'ajax_chart_data' ] );
 
-        // força layout de 1 coluna para todos os usuários
-        add_filter( 'screen_layout_columns', [ __CLASS__, 'force_one_column' ], 999, 2 );
-        add_action( 'admin_init',            [ __CLASS__, 'set_one_column_option' ] );
+        // Injeta o painel direto na página, sem depender do sistema de meta boxes
+        add_action( 'admin_notices', [ __CLASS__, 'maybe_render' ] );
+
+        // Remove todos os widgets nativos e de terceiros
+        add_action( 'wp_dashboard_setup', [ __CLASS__, 'remove_all_widgets' ], PHP_INT_MAX );
     }
 
-    public static function force_one_column( $columns, $screen_id ) {
-        if ( 'dashboard' === $screen_id ) {
-            $columns['dashboard'] = 1;
-        }
-        return $columns;
-    }
-
-    public static function set_one_column_option() {
-        $user_id = get_current_user_id();
-        if ( get_user_meta( $user_id, 'screen_layout_dashboard', true ) != 1 ) {
-            update_user_meta( $user_id, 'screen_layout_dashboard', 1 );
-        }
-        // garante que nosso widget não esteja na lista de ocultos
-        $hidden = get_user_meta( $user_id, 'metaboxhidden_dashboard', true );
-        if ( is_array( $hidden ) && in_array( 'wcd_main', $hidden ) ) {
-            $hidden = array_diff( $hidden, [ 'wcd_main' ] );
-            update_user_meta( $user_id, 'metaboxhidden_dashboard', $hidden );
-        }
-    }
-
-    // ─── Remove todos os widgets padrão e adiciona os nossos ─────────────────
-
-    public static function setup_dashboard() {
+    public static function remove_all_widgets() {
         global $wp_meta_boxes;
+        if ( isset( $wp_meta_boxes['dashboard'] ) ) {
+            $wp_meta_boxes['dashboard'] = [];
+        }
+    }
 
-        // remove tudo
-        $wp_meta_boxes['dashboard'] = [];
+    // ─── Só renderiza na página do Dashboard ─────────────────────────────────
 
-        // adiciona nosso painel em contexto 'normal' (coluna única)
-        wp_add_dashboard_widget(
-            'wcd_main',
-            '',
-            [ __CLASS__, 'render_main' ]
-        );
+    public static function maybe_render() {
+        $screen = get_current_screen();
+        if ( ! $screen || 'dashboard' !== $screen->id ) return;
+        self::render_main();
     }
 
     // ─── Assets ──────────────────────────────────────────────────────────────
@@ -86,8 +65,8 @@ class WCD_Dashboard {
         $donut = WCD_Data::get_orders_by_status();
 
         wp_localize_script( 'wcd-script', 'wcdData', [
-            'chart' => $chart,
-            'donut' => $donut,
+            'chart'    => $chart,
+            'donut'    => $donut,
             'currency' => get_woocommerce_currency_symbol(),
         ] );
     }
@@ -95,22 +74,36 @@ class WCD_Dashboard {
     // ─── Render principal ─────────────────────────────────────────────────────
 
     public static function render_main() {
-        $kpis    = WCD_Data::get_kpis();
-        $orders  = WCD_Data::get_recent_orders( 10 );
-        $top     = WCD_Data::get_top_products( 5 );
-        $stock   = WCD_Data::get_low_stock( 5, 10 );
-        $symbol  = get_woocommerce_currency_symbol();
+        $kpis   = WCD_Data::get_kpis();
+        $orders = WCD_Data::get_recent_orders( 10 );
+        $top    = WCD_Data::get_top_products( 5 );
+        $stock  = WCD_Data::get_low_stock( 5, 10 );
+        $symbol = get_woocommerce_currency_symbol();
 
         $fmt = function( $val ) use ( $symbol ) {
             return $symbol . number_format( $val, 2, ',', '.' );
         };
         ?>
+
+        <!-- Esconde tudo que não é nosso painel (widgets WP, notices de outros plugins) -->
+        <style>
+            #dashboard-widgets-wrap,
+            #wpbody-content > .wrap > h1 { display: none !important; }
+            /* Remove notices de outros plugins (Elementor Go Pro, etc.) */
+            #wpbody-content > .notice:not(.wcd-notice),
+            #wpbody-content > .updated:not(.wcd-notice),
+            #wpbody-content > .update-nag { display: none !important; }
+        </style>
+
         <div class="wcd-wrap">
 
             <!-- ── Header ── -->
             <div class="wcd-header">
                 <div class="wcd-header__logo">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 3h18v4H3zM3 10h11v4H3zM3 17h7v4H3z" fill="currentColor" opacity=".9"/><circle cx="18" cy="19" r="4" fill="#7B5EA7"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 3h18v4H3zM3 10h11v4H3zM3 17h7v4H3z" fill="currentColor" opacity=".9"/>
+                        <circle cx="18" cy="19" r="4" fill="#7B5EA7"/>
+                    </svg>
                     <span>WooCommerce Dashboard</span>
                 </div>
                 <div class="wcd-header__date"><?php echo esc_html( date_i18n( 'l, d \d\e F \d\e Y' ) ); ?></div>
@@ -120,13 +113,13 @@ class WCD_Dashboard {
             <div class="wcd-kpis">
                 <?php
                 $cards = [
-                    [ 'label' => 'Receita Hoje',      'value' => $fmt( $kpis['revenue_today'] ),   'icon' => '💰', 'color' => 'green' ],
-                    [ 'label' => 'Receita do Mês',    'value' => $fmt( $kpis['revenue_month'] ),   'icon' => '📈', 'color' => 'blue' ],
-                    [ 'label' => 'Pedidos Hoje',      'value' => $kpis['orders_today'],             'icon' => '🛒', 'color' => 'purple' ],
-                    [ 'label' => 'Aguardando',        'value' => $kpis['orders_pending'],           'icon' => '⏳', 'color' => 'orange' ],
-                    [ 'label' => 'Em Processamento',  'value' => $kpis['orders_processing'],        'icon' => '⚙️',  'color' => 'indigo' ],
-                    [ 'label' => 'Ticket Médio/Mês',  'value' => $fmt( $kpis['avg_ticket'] ),       'icon' => '🎫', 'color' => 'teal' ],
-                    [ 'label' => 'Clientes',          'value' => number_format( $kpis['total_customers'], 0, ',', '.' ), 'icon' => '👥', 'color' => 'pink' ],
+                    [ 'label' => 'Receita Hoje',     'value' => $fmt( $kpis['revenue_today'] ),   'icon' => '💰', 'color' => 'green' ],
+                    [ 'label' => 'Receita do Mês',   'value' => $fmt( $kpis['revenue_month'] ),   'icon' => '📈', 'color' => 'blue' ],
+                    [ 'label' => 'Pedidos Hoje',     'value' => $kpis['orders_today'],             'icon' => '🛒', 'color' => 'purple' ],
+                    [ 'label' => 'Aguardando',       'value' => $kpis['orders_pending'],           'icon' => '⏳', 'color' => 'orange' ],
+                    [ 'label' => 'Em Processamento', 'value' => $kpis['orders_processing'],        'icon' => '⚙️', 'color' => 'indigo' ],
+                    [ 'label' => 'Ticket Médio/Mês', 'value' => $fmt( $kpis['avg_ticket'] ),       'icon' => '🎫', 'color' => 'teal' ],
+                    [ 'label' => 'Clientes',         'value' => number_format( $kpis['total_customers'], 0, ',', '.' ), 'icon' => '👥', 'color' => 'pink' ],
                 ];
                 foreach ( $cards as $c ) : ?>
                     <div class="wcd-kpi wcd-kpi--<?php echo esc_attr( $c['color'] ); ?>">
@@ -142,21 +135,15 @@ class WCD_Dashboard {
             <!-- ── Charts ── -->
             <div class="wcd-charts">
                 <div class="wcd-card wcd-card--chart">
-                    <div class="wcd-card__head">
-                        <h3>Pedidos — últimos 30 dias</h3>
-                    </div>
+                    <div class="wcd-card__head"><h3>Pedidos — últimos 30 dias</h3></div>
                     <canvas id="wcd-chart-orders" height="100"></canvas>
                 </div>
                 <div class="wcd-card wcd-card--chart">
-                    <div class="wcd-card__head">
-                        <h3>Receita — últimos 30 dias</h3>
-                    </div>
+                    <div class="wcd-card__head"><h3>Receita — últimos 30 dias</h3></div>
                     <canvas id="wcd-chart-revenue" height="100"></canvas>
                 </div>
                 <div class="wcd-card wcd-card--donut">
-                    <div class="wcd-card__head">
-                        <h3>Pedidos por Status</h3>
-                    </div>
+                    <div class="wcd-card__head"><h3>Pedidos por Status</h3></div>
                     <div class="wcd-donut-wrap">
                         <canvas id="wcd-chart-donut"></canvas>
                     </div>
@@ -176,17 +163,13 @@ class WCD_Dashboard {
                         <table class="wcd-table">
                             <thead>
                                 <tr>
-                                    <th>#</th>
-                                    <th>Cliente</th>
-                                    <th>Status</th>
-                                    <th>Total</th>
-                                    <th>Data</th>
-                                    <th></th>
+                                    <th>#</th><th>Cliente</th><th>Status</th>
+                                    <th>Total</th><th>Data</th><th></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if ( empty( $orders ) ) : ?>
-                                    <tr><td colspan="6" style="text-align:center;color:#999">Nenhum pedido encontrado.</td></tr>
+                                    <tr><td colspan="6" class="wcd-empty" style="text-align:center;padding:20px">Nenhum pedido encontrado.</td></tr>
                                 <?php else : ?>
                                     <?php foreach ( $orders as $o ) : ?>
                                         <tr>
@@ -199,9 +182,7 @@ class WCD_Dashboard {
                                             </td>
                                             <td><?php echo esc_html( $symbol . number_format( $o['total'], 2, ',', '.' ) ); ?></td>
                                             <td><?php echo esc_html( $o['date'] ); ?></td>
-                                            <td>
-                                                <a href="<?php echo esc_url( $o['edit_url'] ); ?>" class="wcd-btn-icon" title="Editar">✏️</a>
-                                            </td>
+                                            <td><a href="<?php echo esc_url( $o['edit_url'] ); ?>" class="wcd-btn-icon" title="Editar">✏️</a></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -210,14 +191,11 @@ class WCD_Dashboard {
                     </div>
                 </div>
 
-                <!-- Coluna lateral: top produtos + estoque baixo -->
+                <!-- Sidebar: top produtos + estoque baixo -->
                 <div class="wcd-sidebar">
 
-                    <!-- Top produtos -->
                     <div class="wcd-card">
-                        <div class="wcd-card__head">
-                            <h3>🏆 Mais Vendidos</h3>
-                        </div>
+                        <div class="wcd-card__head"><h3>🏆 Mais Vendidos</h3></div>
                         <?php if ( empty( $top ) ) : ?>
                             <p class="wcd-empty">Sem dados ainda.</p>
                         <?php else : ?>
@@ -234,11 +212,8 @@ class WCD_Dashboard {
                         <?php endif; ?>
                     </div>
 
-                    <!-- Estoque baixo -->
                     <div class="wcd-card">
-                        <div class="wcd-card__head">
-                            <h3>⚠️ Estoque Baixo</h3>
-                        </div>
+                        <div class="wcd-card__head"><h3>⚠️ Estoque Baixo</h3></div>
                         <?php if ( empty( $stock ) ) : ?>
                             <p class="wcd-empty">Nenhum produto com estoque crítico.</p>
                         <?php else : ?>
@@ -263,6 +238,6 @@ class WCD_Dashboard {
     }
 
     public static function notice_woo_required() {
-        echo '<div class="notice notice-error"><p><strong>WooCommerce Dashboard</strong> requer o WooCommerce ativo.</p></div>';
+        echo '<div class="notice notice-error wcd-notice"><p><strong>WooCommerce Dashboard</strong> requer o WooCommerce ativo.</p></div>';
     }
 }
