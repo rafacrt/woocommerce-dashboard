@@ -104,7 +104,7 @@ class WCD_Dashboard {
                         <path d="M3 3h18v4H3zM3 10h11v4H3zM3 17h7v4H3z" fill="currentColor" opacity=".9"/>
                         <circle cx="18" cy="19" r="4" fill="#7B5EA7"/>
                     </svg>
-                    <span>WooCommerce Dashboard</span>
+                    <span>RAJO Dashboard</span>
                 </div>
                 <div class="wcd-header__date"><?php echo esc_html( date_i18n( 'l, d \d\e F \d\e Y' ) ); ?></div>
             </div>
@@ -238,6 +238,6 @@ class WCD_Dashboard {
     }
 
     public static function notice_woo_required() {
-        echo '<div class="notice notice-error wcd-notice"><p><strong>WooCommerce Dashboard</strong> requer o WooCommerce ativo.</p></div>';
+        echo '<div class="notice notice-error wcd-notice"><p><strong>RAJO Dashboard</strong> requer o WooCommerce ativo.</p></div>';
     }
 }
