@@ -1,5 +1,5 @@
 /* =========================================================
-   WooCommerce Dashboard — Estilos
+   RAJO Dashboard — Estilos
    ========================================================= */
 
 /* Remove a borda/título padrão do meta-box do WP */
@@ -37,6 +37,18 @@
     height: 32px;
     color: #7B5EA7;
 }
+.wcd-header__mode {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: #7B5EA7;
+    background: #f3e8ff;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-decoration: none;
+}
+.wcd-header__mode:hover { background: #e9d5ff; color: #6b21a8; }
 .wcd-header__date {
     font-size: 13px;
     color: #64748b;
@@ -70,6 +82,9 @@
 .wcd-kpi--indigo  { border-color: #6366f1; }
 .wcd-kpi--teal    { border-color: #14b8a6; }
 .wcd-kpi--pink    { border-color: #ec4899; }
+.wcd-kpi--red     { border-color: #ef4444; }
+a.wcd-kpi         { text-decoration: none; color: inherit; }
+a.wcd-kpi:focus   { box-shadow: 0 0 0 2px #7B5EA7; outline: none; }
 
 .wcd-kpi__icon { font-size: 28px; line-height: 1; }
 .wcd-kpi__info { display: flex; flex-direction: column; min-width: 0; }
@@ -170,8 +185,26 @@
 .wcd-badge--cancelled    { background: #fee2e2; color: #991b1b; }
 .wcd-badge--refunded     { background: #f1f5f9; color: #475569; }
 .wcd-badge--failed       { background: #fde8e8; color: #c81e1e; }
+/* status de conteúdo (modo WordPress) */
+.wcd-badge--publish      { background: #dcfce7; color: #166534; }
+.wcd-badge--draft        { background: #fef9c3; color: #854d0e; }
+.wcd-badge--private      { background: #f1f5f9; color: #475569; }
+.wcd-badge--future       { background: #dbeafe; color: #1e40af; }
 
 .wcd-btn-icon { text-decoration: none; font-size: 14px; }
+
+/* ── Coluna principal com vários cards (modo WordPress) ── */
+.wcd-main-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* ── Painéis extras (filtro rajo_dashboard_paineis) ── */
+.wcd-extras {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 14px;
+}
+.wcd-extras > .wcd-card { grid-column: 1 / -1; min-width: 0; }
+.wcd-extras > .wcd-card--half { grid-column: auto; }
 
 /* ── Sidebar ── */
 .wcd-sidebar { display: flex; flex-direction: column; gap: 14px; }
@@ -266,6 +299,7 @@
 @media (max-width: 900px) {
     .wcd-charts { grid-template-columns: 1fr; }
     .wcd-bottom { grid-template-columns: 1fr; }
+    .wcd-extras { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
     .wcd-kpis { grid-template-columns: 1fr 1fr; }

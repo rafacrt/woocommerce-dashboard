@@ -55,8 +55,52 @@
             },
         };
 
-        const { labels, orders, revenue } = wcdData.chart;
         const currency = wcdData.currency || 'R$';
+
+        // ── Modo WordPress: publicações, edições e mídia por tipo ──
+        if ( 'wordpress' === wcdData.mode ) {
+            const { labels, published, edited } = wcdData.chart;
+            const bar = ( id, data, color, light, unit ) => {
+                const ctx = document.getElementById( id );
+                if ( ! ctx ) return;
+                new Chart( ctx, {
+                    type: 'bar',
+                    data: { labels, datasets: [ { data, backgroundColor: light, borderColor: color, borderWidth: 2, borderRadius: 6, borderSkipped: false } ] },
+                    options: {
+                        ...defaults,
+                        plugins: { ...defaults.plugins, tooltip: { ...defaults.plugins.tooltip, callbacks: { label: ctx => ` ${ctx.parsed.y} ${unit}` } } },
+                        scales: { ...defaults.scales, y: { ...defaults.scales.y, ticks: { ...defaults.scales.y.ticks, precision: 0 } } },
+                    },
+                } );
+            };
+            bar( 'wcd-chart-published', published, palette.purple, palette.purpleLight, 'publicação(ões)' );
+            bar( 'wcd-chart-edited', edited, palette.blue, palette.blueLight, 'item(ns) editado(s)' );
+
+            const ctxMedia = document.getElementById( 'wcd-chart-donut' );
+            if ( ctxMedia && wcdData.donut && wcdData.donut.length ) {
+                const colors = [ palette.teal, palette.purple, palette.orange, palette.blue, palette.pink ];
+                new Chart( ctxMedia, {
+                    type: 'doughnut',
+                    data: {
+                        labels: wcdData.donut.map( d => d.label ),
+                        datasets: [ { data: wcdData.donut.map( d => d.count ), backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 } ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        cutout: '68%',
+                        plugins: {
+                            legend: { display: true, position: 'bottom', labels: { font: { size: 10 }, padding: 8, boxWidth: 12, color: '#475569' } },
+                            tooltip: { backgroundColor: '#1e293b', callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} arquivo(s)` } },
+                        },
+                    },
+                } );
+            }
+            return;
+        }
+
+        // ── Modo WooCommerce ──
+        const { labels, orders, revenue } = wcdData.chart;
 
         // ── Gráfico de pedidos ──
         const ctxOrders = document.getElementById( 'wcd-chart-orders' );
