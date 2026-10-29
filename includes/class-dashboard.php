@@ -61,7 +61,7 @@ class WCD_Dashboard {
             $data = [
                 'chart'    => WCD_Woo_Data::get_chart_data( 30 ),
                 'donut'    => WCD_Woo_Data::get_orders_by_status(),
-                'currency' => get_woocommerce_currency_symbol(),
+                'currency' => html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ),
             ];
         } else {
             $data = [
