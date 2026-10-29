@@ -1,129 +1,165 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-class WCD_Data {
+/**
+ * Consultas do modo WooCommerce.
+ * Funciona com pedidos em wp_posts (legado) e nas tabelas HPOS (wc_orders).
+ */
+class WCD_Woo_Data {
+
+    // ─── Tabela de pedidos (HPOS ou legado) ──────────────────────────────────
+
+    private static function hpos() {
+        return class_exists( '\Automattic\WooCommerce\Utilities\OrderUtil' )
+            && \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+    }
+
+    /**
+     * Partes do SQL de pedidos: FROM (com o total), tabela pura para JOIN, colunas de id/status/tipo/total/data.
+     * No HPOS a data é GMT; no legado é a hora local do site.
+     */
+    private static function orders_sql() {
+        global $wpdb;
+        if ( self::hpos() ) {
+            return [
+                'from'   => "{$wpdb->prefix}wc_orders o",
+                'table'  => "{$wpdb->prefix}wc_orders o",
+                'id'     => 'o.id',
+                'status' => 'o.status',
+                'type'   => 'o.type',
+                'total'  => 'o.total_amount',
+                'date'   => 'o.date_created_gmt',
+                'gmt'    => true,
+            ];
+        }
+        return [
+            'from'   => "{$wpdb->posts} o LEFT JOIN {$wpdb->postmeta} ot ON ot.post_id = o.ID AND ot.meta_key = '_order_total'",
+            'table'  => "{$wpdb->posts} o",
+            'id'     => 'o.ID',
+            'status' => 'o.post_status',
+            'type'   => 'o.post_type',
+            'total'  => 'ot.meta_value',
+            'date'   => 'o.post_date',
+            'gmt'    => false,
+        ];
+    }
+
+    /** Converte um horário local do site para o formato da coluna de data. */
+    private static function date_param( $local, $sql ) {
+        return $sql['gmt'] ? get_gmt_from_date( $local ) : $local;
+    }
+
+    public static function orders_list_url() {
+        return self::hpos() ? admin_url( 'admin.php?page=wc-orders' ) : admin_url( 'edit.php?post_type=shop_order' );
+    }
 
     // ─── KPIs ────────────────────────────────────────────────────────────────
 
     public static function get_kpis() {
-        $today_start = date( 'Y-m-d 00:00:00' );
-        $today_end   = date( 'Y-m-d 23:59:59' );
-        $month_start = date( 'Y-m-01 00:00:00' );
+        $today_start = wp_date( 'Y-m-d 00:00:00' );
+        $today_end   = wp_date( 'Y-m-d 23:59:59' );
+        $month_start = wp_date( 'Y-m-01 00:00:00' );
 
         return [
-            'revenue_today'   => self::sum_revenue( $today_start, $today_end ),
-            'revenue_month'   => self::sum_revenue( $month_start, date( 'Y-m-d 23:59:59' ) ),
-            'orders_today'    => self::count_orders( $today_start, $today_end ),
-            'orders_pending'  => self::count_orders_by_status( 'wc-pending' ),
+            'revenue_today'     => self::sum_revenue( $today_start, $today_end ),
+            'revenue_month'     => self::sum_revenue( $month_start, $today_end ),
+            'orders_today'      => self::count_orders( $today_start, $today_end ),
+            'orders_pending'    => self::count_orders_by_status( 'wc-pending' ),
             'orders_processing' => self::count_orders_by_status( 'wc-processing' ),
-            'total_customers' => self::count_customers(),
-            'avg_ticket'      => self::avg_ticket( $month_start, date( 'Y-m-d 23:59:59' ) ),
+            'total_customers'   => self::count_customers(),
+            'avg_ticket'        => self::avg_ticket( $month_start, $today_end ),
         ];
     }
 
-    private static function sum_revenue( $start, $end ) {
+    private static function aggregate_paid( $fn, $start, $end ) {
         global $wpdb;
-        $result = $wpdb->get_var( $wpdb->prepare(
-            "SELECT SUM( meta_value ) FROM {$wpdb->postmeta}
-             WHERE meta_key = '_order_total'
-               AND post_id IN (
-                   SELECT ID FROM {$wpdb->posts}
-                   WHERE post_type   = 'shop_order'
-                     AND post_status IN ('wc-completed','wc-processing')
-                     AND post_date BETWEEN %s AND %s
-               )",
-            $start, $end
+        $s = self::orders_sql();
+        return (float) $wpdb->get_var( $wpdb->prepare(
+            "SELECT {$fn}( {$s['total']} ) FROM {$s['from']}
+             WHERE {$s['type']} = 'shop_order'
+               AND {$s['status']} IN ('wc-completed','wc-processing')
+               AND {$s['date']} BETWEEN %s AND %s",
+            self::date_param( $start, $s ), self::date_param( $end, $s )
         ) );
-        return (float) $result;
+    }
+
+    private static function sum_revenue( $start, $end ) {
+        return self::aggregate_paid( 'SUM', $start, $end );
+    }
+
+    private static function avg_ticket( $start, $end ) {
+        return self::aggregate_paid( 'AVG', $start, $end );
     }
 
     private static function count_orders( $start, $end ) {
         global $wpdb;
+        $s = self::orders_sql();
         return (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(ID) FROM {$wpdb->posts}
-             WHERE post_type   = 'shop_order'
-               AND post_status NOT IN ('trash','auto-draft')
-               AND post_date BETWEEN %s AND %s",
-            $start, $end
+            "SELECT COUNT( {$s['id']} ) FROM {$s['from']}
+             WHERE {$s['type']} = 'shop_order'
+               AND {$s['status']} NOT IN ('trash','auto-draft','wc-checkout-draft')
+               AND {$s['date']} BETWEEN %s AND %s",
+            self::date_param( $start, $s ), self::date_param( $end, $s )
         ) );
     }
 
     private static function count_orders_by_status( $status ) {
         global $wpdb;
+        $s = self::orders_sql();
         return (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(ID) FROM {$wpdb->posts}
-             WHERE post_type = 'shop_order' AND post_status = %s",
+            "SELECT COUNT( {$s['id']} ) FROM {$s['from']}
+             WHERE {$s['type']} = 'shop_order' AND {$s['status']} = %s",
             $status
         ) );
     }
 
     private static function count_customers() {
-        global $wpdb;
-        return (int) $wpdb->get_var(
-            "SELECT COUNT(ID) FROM {$wpdb->users}
-             WHERE ID IN (
-                 SELECT user_id FROM {$wpdb->usermeta}
-                 WHERE meta_key = 'wp_capabilities'
-                   AND meta_value LIKE '%customer%'
-             )"
-        );
-    }
-
-    private static function avg_ticket( $start, $end ) {
-        global $wpdb;
-        $result = $wpdb->get_var( $wpdb->prepare(
-            "SELECT AVG( meta_value ) FROM {$wpdb->postmeta}
-             WHERE meta_key = '_order_total'
-               AND post_id IN (
-                   SELECT ID FROM {$wpdb->posts}
-                   WHERE post_type   = 'shop_order'
-                     AND post_status IN ('wc-completed','wc-processing')
-                     AND post_date BETWEEN %s AND %s
-               )",
-            $start, $end
-        ) );
-        return (float) $result;
+        $users = count_users();
+        return (int) ( $users['avail_roles']['customer'] ?? 0 );
     }
 
     // ─── Gráfico: pedidos + receita últimos 30 dias ───────────────────────────
 
     public static function get_chart_data( $days = 30 ) {
         global $wpdb;
+        $s     = self::orders_sql();
+        $start = wp_date( 'Y-m-d 00:00:00', strtotime( "-{$days} days" ) );
+
+        // No HPOS a data é GMT: agrupa pelo dia local somando o fuso do site
+        $offset = $s['gmt'] ? (int) round( (float) get_option( 'gmt_offset' ) * 3600 ) : 0;
+        $day    = "DATE( DATE_ADD( {$s['date']}, INTERVAL {$offset} SECOND ) )";
 
         $rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT DATE(post_date) AS day,
-                    COUNT(ID) AS orders,
-                    SUM( (SELECT meta_value FROM {$wpdb->postmeta}
-                          WHERE post_id = p.ID AND meta_key = '_order_total' LIMIT 1) ) AS revenue
-             FROM {$wpdb->posts} p
-             WHERE post_type   = 'shop_order'
-               AND post_status IN ('wc-completed','wc-processing','wc-pending')
-               AND post_date  >= DATE_SUB(NOW(), INTERVAL %d DAY)
-             GROUP BY DATE(post_date)
+            "SELECT {$day} AS day, COUNT( {$s['id']} ) AS orders, SUM( {$s['total']} ) AS revenue
+             FROM {$s['from']}
+             WHERE {$s['type']} = 'shop_order'
+               AND {$s['status']} IN ('wc-completed','wc-processing','wc-pending')
+               AND {$s['date']} >= %s
+             GROUP BY day
              ORDER BY day ASC",
-            $days
+            self::date_param( $start, $s )
         ) );
-
-        $labels  = [];
-        $orders  = [];
-        $revenue = [];
-
-        // preenche todos os dias (sem gaps)
-        $period = new DatePeriod(
-            new DateTime( "-{$days} days" ),
-            new DateInterval( 'P1D' ),
-            new DateTime( 'tomorrow' )
-        );
 
         $indexed = [];
         foreach ( $rows as $r ) {
             $indexed[ $r->day ] = $r;
         }
 
+        $labels  = [];
+        $orders  = [];
+        $revenue = [];
+        $tz      = wp_timezone();
+        $period  = new DatePeriod(
+            new DateTime( "-{$days} days", $tz ),
+            new DateInterval( 'P1D' ),
+            new DateTime( 'tomorrow', $tz )
+        );
+
+        // preenche todos os dias (sem gaps)
         foreach ( $period as $dt ) {
             $key       = $dt->format( 'Y-m-d' );
             $labels[]  = $dt->format( 'd/m' );
-            $orders[]  = isset( $indexed[ $key ] ) ? (int) $indexed[ $key ]->orders  : 0;
+            $orders[]  = isset( $indexed[ $key ] ) ? (int) $indexed[ $key ]->orders    : 0;
             $revenue[] = isset( $indexed[ $key ] ) ? (float) $indexed[ $key ]->revenue : 0;
         }
 
@@ -144,11 +180,11 @@ class WCD_Data {
         foreach ( $orders as $order ) {
             $data[] = [
                 'id'       => $order->get_id(),
-                'customer' => $order->get_formatted_billing_full_name() ?: __( 'Visitante', 'wc-dashboard' ),
+                'customer' => $order->get_formatted_billing_full_name() ?: __( 'Visitante', 'rajo-dashboard' ),
                 'status'   => $order->get_status(),
                 'total'    => $order->get_total(),
                 'date'     => $order->get_date_created() ? $order->get_date_created()->date_i18n( 'd/m/Y H:i' ) : '—',
-                'edit_url' => get_edit_post_link( $order->get_id() ),
+                'edit_url' => $order->get_edit_order_url(),
             ];
         }
         return $data;
@@ -158,6 +194,7 @@ class WCD_Data {
 
     public static function get_top_products( $limit = 5 ) {
         global $wpdb;
+        $s = self::orders_sql();
 
         $rows = $wpdb->get_results( $wpdb->prepare(
             "SELECT order_item_meta.meta_value AS product_id,
@@ -169,9 +206,9 @@ class WCD_Data {
              INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta AS qty_meta
                      ON items.order_item_id = qty_meta.order_item_id
                     AND qty_meta.meta_key = '_qty'
-             INNER JOIN {$wpdb->posts} AS orders
-                     ON items.order_id = orders.ID
-                    AND orders.post_status IN ('wc-completed','wc-processing')
+             INNER JOIN {$s['table']}
+                     ON items.order_id = {$s['id']}
+                    AND {$s['status']} IN ('wc-completed','wc-processing')
              WHERE items.order_item_type = 'line_item'
              GROUP BY product_id
              ORDER BY qty_sold DESC
@@ -236,16 +273,17 @@ class WCD_Data {
 
     public static function get_orders_by_status() {
         global $wpdb;
+        $s = self::orders_sql();
 
-        $statuses = wc_get_order_statuses();
-        $data     = [];
+        $counts = $wpdb->get_results(
+            "SELECT {$s['status']} AS status, COUNT( {$s['id']} ) AS n FROM {$s['from']}
+             WHERE {$s['type']} = 'shop_order' GROUP BY {$s['status']}",
+            OBJECT_K
+        );
 
-        foreach ( $statuses as $slug => $label ) {
-            $count = (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(ID) FROM {$wpdb->posts}
-                 WHERE post_type = 'shop_order' AND post_status = %s",
-                $slug
-            ) );
+        $data = [];
+        foreach ( wc_get_order_statuses() as $slug => $label ) {
+            $count = isset( $counts[ $slug ] ) ? (int) $counts[ $slug ]->n : 0;
             if ( $count > 0 ) {
                 $data[] = [ 'label' => $label, 'count' => $count, 'slug' => $slug ];
             }
