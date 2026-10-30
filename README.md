@@ -120,3 +120,27 @@ rajo-dashboard/
 ## Licença
 
 GPL-2.0+
+
+
+## Modo Mesclado (2.1)
+
+Junta WordPress e WooCommerce no mesmo painel: receita, pedidos e mais vendidos ao lado de páginas, rascunhos, comentários, atualizações e saúde do site.
+
+Cada site pode trocar qualquer parte pelo filtro `rajo_dashboard_mesclado`. O layout tem quatro listas indexadas por chave:
+
+| Chave | Conteúdo |
+|---|---|
+| `cards` | `[ label, value, icon, color, url ]` |
+| `graficos` | `[ titulo, tipo (bar\|line\|doughnut), labels, series => [ [ nome, dados, cor ] ], formato (numero\|moeda), empilhado, unidade ]` |
+| `principal` | painéis da coluna larga: `[ titulo, link => [ url, texto ], render ]` |
+| `lateral` | painéis da coluna estreita (mesmo formato) |
+
+```php
+add_filter( 'rajo_dashboard_mesclado', function ( $layout ) {
+    $layout['cards']['paginas'] = [ 'label' => 'Unidades', 'value' => 8, 'icon' => '📍', 'color' => 'blue', 'url' => '' ];
+    unset( $layout['lateral']['rascunhos'] );
+    return $layout;
+} );
+```
+
+Os gráficos são desenhados pelo JS a partir desses dados, então um gráfico novo não precisa de código JavaScript.
