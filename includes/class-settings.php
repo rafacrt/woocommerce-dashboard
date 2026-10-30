@@ -8,6 +8,8 @@ class WCD_Settings {
 
     const OPTION = 'wcd_mode';
 
+    const MODES = [ 'woocommerce' => 'WooCommerce', 'wordpress' => 'WordPress', 'mesclado' => 'Mesclado' ];
+
     public static function init() {
         add_action( 'admin_menu', [ __CLASS__, 'add_page' ] );
         add_action( 'admin_init', [ __CLASS__, 'register' ] );
@@ -19,13 +21,13 @@ class WCD_Settings {
     }
 
     /**
-     * Modo escolhido: 'woocommerce' ou 'wordpress'.
+     * Modo escolhido: 'woocommerce', 'wordpress' ou 'mesclado' (WordPress + WooCommerce no mesmo painel).
      * Sem escolha salva, usa WooCommerce quando ele está ativo.
      * Escolheu WooCommerce mas ele foi desativado: cai para WordPress.
      */
     public static function mode() {
         $mode = get_option( self::OPTION, '' );
-        if ( ! in_array( $mode, [ 'woocommerce', 'wordpress' ], true ) ) {
+        if ( ! isset( self::MODES[ $mode ] ) ) {
             $mode = self::woo_active() ? 'woocommerce' : 'wordpress';
         }
         if ( 'woocommerce' === $mode && ! self::woo_active() ) {
@@ -42,7 +44,7 @@ class WCD_Settings {
         register_setting( 'wcd_settings', self::OPTION, [
             'type'              => 'string',
             'sanitize_callback' => function ( $value ) {
-                return in_array( $value, [ 'woocommerce', 'wordpress' ], true ) ? $value : 'wordpress';
+                return isset( self::MODES[ $value ] ) ? $value : 'wordpress';
             },
         ] );
     }
@@ -77,9 +79,13 @@ class WCD_Settings {
                                     <strong>WooCommerce</strong> — receita, pedidos, ticket médio, mais vendidos e estoque baixo.
                                     <?php if ( ! $woo ) : ?><em>(requer o WooCommerce ativo)</em><?php endif; ?>
                                 </label>
-                                <label style="display:block">
+                                <label style="display:block;margin-bottom:12px">
                                     <input type="radio" name="<?php echo esc_attr( self::OPTION ); ?>" value="wordpress" <?php checked( $mode, 'wordpress' ); ?>>
                                     <strong>WordPress</strong> — conteúdo por tipo, rascunhos, alterações recentes, mídia, usuários e saúde do site.
+                                </label>
+                                <label style="display:block">
+                                    <input type="radio" name="<?php echo esc_attr( self::OPTION ); ?>" value="mesclado" <?php checked( $mode, 'mesclado' ); ?>>
+                                    <strong>Mesclado</strong> — WordPress e WooCommerce no mesmo painel: vendas e pedidos junto com conteúdo e saúde do site. Cada site pode trocar cards, gráficos e painéis pelo filtro <code>rajo_dashboard_mesclado</code>.
                                 </label>
                             </fieldset>
                         </td>

@@ -297,8 +297,8 @@ a.wcd-kpi:focus   { box-shadow: 0 0 0 2px #7B5EA7; outline: none; }
     .wcd-card--donut { width: auto; }
 }
 @media (max-width: 900px) {
-    .wcd-charts { grid-template-columns: 1fr; }
-    .wcd-bottom { grid-template-columns: 1fr; }
+    .wcd-charts { grid-template-columns: minmax(0, 1fr); }
+    .wcd-bottom { grid-template-columns: minmax(0, 1fr); }
     .wcd-extras { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {

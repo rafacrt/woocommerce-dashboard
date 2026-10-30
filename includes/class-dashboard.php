@@ -57,7 +57,12 @@ class WCD_Dashboard {
         );
 
         $mode = WCD_Settings::mode();
-        if ( 'woocommerce' === $mode ) {
+        if ( 'mesclado' === $mode ) {
+            $data = [
+                'graficos' => array_values( WCD_Mixed::layout()['graficos'] ),
+                'currency' => WCD_Settings::woo_active() ? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ) : 'R$',
+            ];
+        } elseif ( 'woocommerce' === $mode ) {
             $data = [
                 'chart'    => WCD_Woo_Data::get_chart_data( 30 ),
                 'donut'    => WCD_Woo_Data::get_orders_by_status(),
@@ -140,7 +145,7 @@ class WCD_Dashboard {
                     <span>RAJO Dashboard</span>
                     <?php if ( current_user_can( 'manage_options' ) ) : ?>
                         <a class="wcd-header__mode" href="<?php echo esc_url( admin_url( 'options-general.php?page=rajo-dashboard' ) ); ?>" title="Trocar o modo do painel">
-                            <?php echo 'woocommerce' === $mode ? 'WooCommerce' : 'WordPress'; ?>
+                            <?php echo esc_html( WCD_Settings::MODES[ $mode ] ); ?>
                         </a>
                     <?php endif; ?>
                 </div>
@@ -148,7 +153,7 @@ class WCD_Dashboard {
             </div>
 
             <?php
-            require WCD_DIR . 'includes/views/' . ( 'woocommerce' === $mode ? 'woocommerce.php' : 'wordpress.php' );
+            require WCD_DIR . 'includes/views/' . $mode . '.php';
             self::render_extra_panels( $mode );
             ?>
 

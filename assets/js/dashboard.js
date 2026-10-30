@@ -57,6 +57,62 @@
 
         const currency = wcdData.currency || 'R$';
 
+        // ── Modo Mesclado: gráficos montados a partir do layout (filtro rajo_dashboard_mesclado) ──
+        if ( 'mesclado' === wcdData.mode ) {
+            const light = cor => cor.replace( /^#(..)(..)(..)$/, ( m, r, g, b ) => `rgba(${ parseInt( r, 16 ) },${ parseInt( g, 16 ) },${ parseInt( b, 16 ) },.15)` );
+            const cycle = [ palette.purple, palette.blue, palette.teal, palette.orange, palette.pink, palette.green, palette.indigo, palette.red ];
+            const valor = ( g, v ) => 'moeda' === g.formato ? `${currency} ${Number( v ).toFixed( 2 ).replace( '.', ',' )}` : `${v} ${g.unidade || ''}`;
+
+            ( wcdData.graficos || [] ).forEach( g => {
+                const ctx = document.getElementById( g.id );
+                if ( ! ctx ) return;
+
+                if ( 'doughnut' === g.tipo ) {
+                    const dados = ( g.series[ 0 ] || {} ).dados || [];
+                    if ( ! dados.some( Number ) ) return;
+                    new Chart( ctx, {
+                        type: 'doughnut',
+                        data: { labels: g.labels, datasets: [ { data: dados, backgroundColor: g.labels.map( ( l, i ) => cycle[ i % cycle.length ] ), borderWidth: 2, borderColor: '#fff', hoverOffset: 6 } ] },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            cutout: '68%',
+                            plugins: {
+                                legend: { display: true, position: 'bottom', labels: { font: { size: 10 }, padding: 8, boxWidth: 12, color: '#475569' } },
+                                tooltip: { backgroundColor: '#1e293b', callbacks: { label: c => ` ${c.label}: ${valor( g, c.parsed )}` } },
+                            },
+                        },
+                    } );
+                    return;
+                }
+
+                const varias   = g.series.length > 1;
+                const datasets = g.series.map( ( s, i ) => {
+                    const cor = palette[ s.cor ] || cycle[ i % cycle.length ];
+                    return 'line' === g.tipo
+                        ? { label: s.nome, data: s.dados, fill: ! varias, backgroundColor: light( cor ), borderColor: cor, borderWidth: 2, tension: 0.4, pointRadius: 3, pointHoverRadius: 6, pointBackgroundColor: cor }
+                        : { label: s.nome, data: s.dados, backgroundColor: varias ? cor : light( cor ), borderColor: cor, borderWidth: varias ? 0 : 2, borderRadius: 6, borderSkipped: false };
+                } );
+                new Chart( ctx, {
+                    type: g.tipo,
+                    data: { labels: g.labels, datasets },
+                    options: {
+                        ...defaults,
+                        plugins: {
+                            ...defaults.plugins,
+                            legend: { display: varias, position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12, color: '#475569' } },
+                            tooltip: { ...defaults.plugins.tooltip, callbacks: { label: c => ` ${varias ? c.dataset.label + ': ' : ''}${valor( g, c.parsed.y )}` } },
+                        },
+                        scales: {
+                            x: { ...defaults.scales.x, stacked: !! g.empilhado },
+                            y: { ...defaults.scales.y, stacked: !! g.empilhado, ticks: { ...defaults.scales.y.ticks, precision: 'moeda' === g.formato ? undefined : 0 } },
+                        },
+                    },
+                } );
+            } );
+            return;
+        }
+
         // ── Modo WordPress: publicações, edições e mídia por tipo ──
         if ( 'wordpress' === wcdData.mode ) {
             const { labels, published, edited } = wcdData.chart;
